@@ -291,10 +291,10 @@ if __name__ == "__main__":
     model = UNet(n_channels=1)
 
     # DiffusionModelを作成
-    diff = DiffusionModel(model, timesteps=200, working_dir="working/mnist2")
+    diff = DiffusionModel(model, timesteps=200, working_dir="working/fashion_mnist_1")
 
     # データを読み込む
-    dataset = torchvision.datasets.MNIST(
+    dataset = torchvision.datasets.FashionMNIST(
         root="./datasets",
         train=True,
         transform=diff.get_data_transform(),
