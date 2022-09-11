@@ -4,6 +4,7 @@ from typing import Sequence
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import math
 
 
 class DoubleConv(nn.Module):
@@ -123,7 +124,7 @@ class UNet(nn.Module):
         self.outc = OutConv(64, n_channels)
 
         self.t_embed = nn.Sequential(
-            SinusoidalPositionEmbeddings(dim=28)
+            SinusoidalPositionEmbeddings(dim=28),
             nn.Linear(28, 128),
             nn.GELU(),
             nn.Linear(128, 128),
@@ -132,7 +133,7 @@ class UNet(nn.Module):
     def forward(self, x, t):
         ht = self.t_embed(t)
 
-        x1 = self.inc(x)
+        x1 = self.inc(x,ht)
         x2 = self.down1(x1,ht)
         x3 = self.down2(x2,ht)
         x4 = self.down3(x3,ht)
