@@ -28,6 +28,7 @@ class DiffusionModel(object):
         self.timestep = timestep
         self.working_dir = working_dir
         self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        self.output_fig_size = (20,20)
         self.prepare_alphas()
         super().__init__()
         return
@@ -42,6 +43,7 @@ class DiffusionModel(object):
     def convert_Tensor_to_PIL(img):
         reverse_transform = Compose(
             [
+                ToTensor(),
                 Lambda(lambda t: (t + 1) / 2),
                 Lambda(lambda t: t.permute(1, 2, 0)),  # CHW to HWC
                 Lambda(lambda t: t * 255.0),
@@ -55,7 +57,7 @@ class DiffusionModel(object):
         # 完全なノイズになるまで、ノイズの大きさはtに対してリニアに増えていくスケジューリングを採用
         beta_start = 0.0001
         beta_end = 0.02  # 0.02で良いの？
-        self.sqrt_betas = betas = np.linspace(beta_start, beta_end, self.timestep)
+        self.betas = betas = np.linspace(beta_start, beta_end, self.timestep)
 
         # KL-divergenceの計算の中に登場する各種係数を計算する
         self.alphas = alphas = 1.0 - betas
@@ -88,9 +90,9 @@ class DiffusionModel(object):
         # t時点の各種係数の値を返す
         sqrt_recip_alphas_t = self.sqrt_recip_alphas[t]
         sqrt_one_minus_alphas_cumprod_t = self.sqrt_one_minus_alphas_cumprod[t]
-        sqrt_betas_t = self.betas[t]
+        betas_t = self.betas[t]
         betas_t_div_sqrt_one_minus_alphas_cumprod_t = (
-            sqrt_betas_t / sqrt_one_minus_alphas_cumprod_t
+            betas_t / sqrt_one_minus_alphas_cumprod_t
         )
         posterior_variance_t = self.posterior_variance[t]
         return (
@@ -101,11 +103,8 @@ class DiffusionModel(object):
 
     def train(self, dataset, epochs=5, batch_size=16):
         # Init models
-        device = self.device
-
-        model = self.model
-        model.to(device)
-        optimizer = Adam(model.parameters(), lr=1e-3)
+        self.model.to(self.device)
+        optimizer = Adam(self.model.parameters(), lr=1e-3)
 
         # Prepare DataLoader
         dataloader = torch.utils.data.DataLoader(
@@ -114,6 +113,7 @@ class DiffusionModel(object):
             shuffle=True,
             pin_memory=True,
             drop_last=True,
+            num_workers=4,
         )
 
         # Training loop
@@ -121,7 +121,7 @@ class DiffusionModel(object):
             with tqdm.tqdm(dataloader, unit="batch", total=len(dataloader)) as tepoch:
                 for data in tepoch:
                     tepoch.set_description(f"Epoch {iEpoch}")
-                    model.train()
+                    self.model.train(True)
                     optimizer.zero_grad()
 
                     if isinstance(data, list):
@@ -169,8 +169,8 @@ class DiffusionModel(object):
                         y_batch.append(noise_gt)
 
                     # ListからTensorに変換して、学習可能な変数にする
-                    x_batch = torch.Tensor(np.array(x_batch))
-                    y_batch = torch.Tensor(np.array(y_batch))
+                    x_batch = torch.Tensor(np.array(x_batch)).to(self.device)
+                    y_batch = torch.Tensor(np.array(y_batch)).to(self.device)
 
                     ##############################
                     # 学習の実行。
@@ -178,7 +178,7 @@ class DiffusionModel(object):
                     ##############################
 
                     # モデルにノイズが加えられた画像を入れる。モデルは、ノイズがどのようだったかを推定する
-                    noise_predicted = model(x_batch)
+                    noise_predicted = self.model(x_batch)
 
                     # 推定されたノイズと、GroundTruthのノイズが近いことを要求するようlossを計算する
                     loss = F.smooth_l1_loss(y_batch, noise_predicted)
@@ -189,36 +189,38 @@ class DiffusionModel(object):
 
                     # 表示
                     tepoch.set_postfix(loss=loss.item())
-                    break
 
-            model.evaluate()
+            self.model.train(False)
 
             # モデルの保存
-            model_path = f"{self.working_dir}/models/model_{iEpoch}.pt"
+            model_path = f"{self.working_dir}/models/model_{iEpoch:04d}.pt"
             os.makedirs(os.path.dirname(model_path), exist_ok=True)
-            torch.save(model.to("cpu").state_dict(), model_path)
+            torch.save(self.model.to("cpu").state_dict(), model_path)
 
             # 画像の保存
-            image_path = f"{self.working_dir}/images/image_{iEpoch}.png"
+            image_path = f"{self.working_dir}/images/image_{iEpoch:04d}.png"
             os.makedirs(os.path.dirname(image_path), exist_ok=True)
             all_imgs = []
             for i in range(5):
-                imgs = self.generate(img_shape=img_shape)
-                imgs = imgs[np.linspace(0, self.timestep, 5, dtype=np.int)]
-                all_imgs.append([imgs[i] for i in range(imgs.shape[0])])
-            self.plot(imgs, output=image_path)
+                imgs = self.generate(img_shape=img_shape,seed=i)
+                imgs_pick = [imgs[i] for i in np.linspace(0, self.timestep-1, 5, dtype=np.int32).tolist()]
+                all_imgs.append(imgs_pick)
+            self.plot(all_imgs, output=image_path)
 
     @torch.no_grad()
-    def generate(self, img_shape):
+    def generate(self, img_shape, seed=0):
+        np.random.seed(seed)
+        self.model.train(False)
+        self.model.to(self.device)
         # start from pure noise (for each example in the batch)
         imgs = []
-        device = self.device
 
         # Start from pure noise
-        img = torch.randn(img_shape, device=device)
+        img = np.random.randn(*(img_shape))
 
         # loop to generate
-        for t in tqdm.tqdm(range(0, self.timestep)[::-1], total=self.timestep):
+        #for t in tqdm.tqdm(range(0, self.timestep)[::-1], total=self.timestep):
+        for t in range(0, self.timestep)[::-1]:
 
             (
                 coeff_normalize,
@@ -229,18 +231,23 @@ class DiffusionModel(object):
             if t == 0:
                 additional_noise_sigma = 0.0
 
-            noise_estimate = self.model(img)
+            img_tensor = np.array([img]) # batchの軸を加える
+            img_tensor = torch.Tensor(img_tensor).to(self.device) # Tensorにして、GPUへ送る
+            noise_estimate_tensor = self.model(img_tensor)
+            noise_estimate = noise_estimate_tensor[0].cpu().numpy() # batch軸を除いて、numpy形式にする
 
             additional_noise = np.sqrt(additional_noise_sigma) * np.random.randn(
                 *(img.shape)
             )
+
             img = (
                 coeff_normalize * (img - coeff_noise * noise_estimate)
                 + additional_noise
             )
 
-            imgs.append(img.cpu().numpy())
+            imgs.append(img)
 
+        imgs = imgs[::-1]
         return imgs
 
     def plot(self, imgs, output=None):
@@ -252,16 +259,28 @@ class DiffusionModel(object):
         num_cols = len(imgs[0])
 
         fig, axs = plt.subplots(
-            figsize=(200, 200), nrows=num_rows, ncols=num_cols, squeeze=False
+            figsize=self.output_fig_size, nrows=num_rows, ncols=num_cols, squeeze=False
         )
         for row_idx, row in enumerate(imgs):
             for col_idx, img in enumerate(row):
                 ax = axs[row_idx, col_idx]
-                img_PIL = Image.fromarray(((img + 1.0) / 2.0 * 255.0).astype(np.uint8))
+                #print(((img + 1.0) / 2.0 * 255.0).transpose(1,2,0).astype(np.uint8))
+                #img_PIL = Image.fromarray(((img + 1.0) / 2.0 * 255.0).transpose(1,2,0).astype(np.uint8))
+                img_np = img.copy().transpose(1,2,0)
+                img_np = (img_np+1.)/2. * 255.
+                img_np = img_np.astype(np.uint8)
+                if img_np.shape[-1]==1:
+                    img_np = img_np.squeeze(axis=-1)
+                img_PIL = Image.fromarray(img_np)
+
+                #img_PIL = self.convert_Tensor_to_PIL(img)
                 ax.imshow(np.asarray(img_PIL))
                 ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
 
         plt.tight_layout()
+        
+        if output:
+            fig.savefig(output)
 
 
 if __name__ == "__main__":
@@ -274,10 +293,10 @@ if __name__ == "__main__":
     # データを読み込む
     dataset = torchvision.datasets.MNIST(
         root="./datasets",
-        train=False,
+        train=True,
         transform=diff.get_data_transform(),
         download=True,
     )
 
     # 学習を実行
-    diff.train(dataset, epochs=5, batch_size=2)
+    diff.train(dataset, epochs=20, batch_size=64)
