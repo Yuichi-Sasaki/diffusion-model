@@ -28,7 +28,7 @@ class DiffusionModel(object):
         self.timestep = timestep
         self.working_dir = working_dir
         self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
-        self.output_fig_size = (20,20)
+        self.output_fig_size = (20, 20)
         self.prepare_alphas()
         super().__init__()
         return
@@ -118,6 +118,7 @@ class DiffusionModel(object):
 
         # Training loop
         for iEpoch in range(epochs):
+            loss_avg = []
             with tqdm.tqdm(dataloader, unit="batch", total=len(dataloader)) as tepoch:
                 for data in tepoch:
                     tepoch.set_description(f"Epoch {iEpoch}")
@@ -188,7 +189,8 @@ class DiffusionModel(object):
                     optimizer.step()
 
                     # 表示
-                    tepoch.set_postfix(loss=loss.item())
+                    loss_avg.append(loss.item())
+                    tepoch.set_postfix(loss=sum(loss_avg) / len(loss_avg))
 
             self.model.train(False)
 
@@ -202,8 +204,13 @@ class DiffusionModel(object):
             os.makedirs(os.path.dirname(image_path), exist_ok=True)
             all_imgs = []
             for i in range(5):
-                imgs = self.generate(img_shape=img_shape,seed=i)
-                imgs_pick = [imgs[i] for i in np.linspace(0, self.timestep-1, 5, dtype=np.int32).tolist()]
+                imgs = self.generate(img_shape=img_shape, seed=i)
+                imgs_pick = [
+                    imgs[i]
+                    for i in np.linspace(
+                        0, self.timestep - 1, 5, dtype=np.int32
+                    ).tolist()
+                ]
                 all_imgs.append(imgs_pick)
             self.plot(all_imgs, output=image_path)
 
@@ -219,7 +226,7 @@ class DiffusionModel(object):
         img = np.random.randn(*(img_shape))
 
         # loop to generate
-        #for t in tqdm.tqdm(range(0, self.timestep)[::-1], total=self.timestep):
+        # for t in tqdm.tqdm(range(0, self.timestep)[::-1], total=self.timestep):
         for t in range(0, self.timestep)[::-1]:
 
             (
@@ -231,10 +238,12 @@ class DiffusionModel(object):
             if t == 0:
                 additional_noise_sigma = 0.0
 
-            img_tensor = np.array([img]) # batchの軸を加える
-            img_tensor = torch.Tensor(img_tensor).to(self.device) # Tensorにして、GPUへ送る
+            img_tensor = np.array([img])  # batchの軸を加える
+            img_tensor = torch.Tensor(img_tensor).to(self.device)  # Tensorにして、GPUへ送る
             noise_estimate_tensor = self.model(img_tensor)
-            noise_estimate = noise_estimate_tensor[0].cpu().numpy() # batch軸を除いて、numpy形式にする
+            noise_estimate = (
+                noise_estimate_tensor[0].cpu().numpy()
+            )  # batch軸を除いて、numpy形式にする
 
             additional_noise = np.sqrt(additional_noise_sigma) * np.random.randn(
                 *(img.shape)
@@ -247,7 +256,6 @@ class DiffusionModel(object):
 
             imgs.append(img)
 
-        imgs = imgs[::-1]
         return imgs
 
     def plot(self, imgs, output=None):
@@ -264,21 +272,21 @@ class DiffusionModel(object):
         for row_idx, row in enumerate(imgs):
             for col_idx, img in enumerate(row):
                 ax = axs[row_idx, col_idx]
-                #print(((img + 1.0) / 2.0 * 255.0).transpose(1,2,0).astype(np.uint8))
-                #img_PIL = Image.fromarray(((img + 1.0) / 2.0 * 255.0).transpose(1,2,0).astype(np.uint8))
-                img_np = img.copy().transpose(1,2,0)
-                img_np = (img_np+1.)/2. * 255.
+                # print(((img + 1.0) / 2.0 * 255.0).transpose(1,2,0).astype(np.uint8))
+                # img_PIL = Image.fromarray(((img + 1.0) / 2.0 * 255.0).transpose(1,2,0).astype(np.uint8))
+                img_np = img.copy().transpose(1, 2, 0)
+                img_np = (img_np + 1.0) / 2.0 * 255.0
                 img_np = img_np.astype(np.uint8)
-                if img_np.shape[-1]==1:
+                if img_np.shape[-1] == 1:
                     img_np = img_np.squeeze(axis=-1)
                 img_PIL = Image.fromarray(img_np)
 
-                #img_PIL = self.convert_Tensor_to_PIL(img)
+                # img_PIL = self.convert_Tensor_to_PIL(img)
                 ax.imshow(np.asarray(img_PIL))
                 ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
 
         plt.tight_layout()
-        
+
         if output:
             fig.savefig(output)
 
