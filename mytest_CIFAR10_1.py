@@ -14,6 +14,7 @@ from torchvision.transforms import (
     CenterCrop,
     Compose,
     Lambda,
+    RandomHorizontalFlip,
     Resize,
     ToPILImage,
     ToTensor,
@@ -38,7 +39,9 @@ class DiffusionModel(object):
     @staticmethod
     def get_data_transform():
         # 入力画像は、(-1,1)に規格化する (ノイズのレンジとの整合性をとるため)
-        transform = Compose([ToTensor(), Lambda(lambda t: (t / 255.0 * 2) - 1)])
+        transform = Compose(
+            [RandomHorizontalFlip(), ToTensor(), Lambda(lambda t: (t / 255.0 * 2) - 1)]
+        )
         return transform
 
     @staticmethod
