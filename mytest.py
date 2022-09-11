@@ -27,6 +27,7 @@ class DiffusionModel(object):
         self.model = model
         self.timestep = timestep
         self.working_dir = working_dir
+        self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
         self.prepare_alphas()
         super().__init__()
         return
@@ -54,30 +55,53 @@ class DiffusionModel(object):
         # 完全なノイズになるまで、ノイズの大きさはtに対してリニアに増えていくスケジューリングを採用
         beta_start = 0.0001
         beta_end = 0.02  # 0.02で良いの？
-        betas = np.linspace(beta_start, beta_end, self.timestep)
+        self.sqrt_betas = betas = np.linspace(beta_start, beta_end, self.timestep)
 
         # KL-divergenceの計算の中に登場する各種係数を計算する
-        alphas = 1.0 - betas
-        alphas_cumprod = np.cumprod(alphas, axis=0)
-        # alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value=1.0)
-        # sqrt_recip_alphas = np.sqrt(1.0 / alphas)
+        self.alphas = alphas = 1.0 - betas
+        self.alphas_cumprod = alphas_cumprod = np.cumprod(alphas, axis=0)
 
-        sqrt_alphas_cumprod = np.sqrt(alphas_cumprod)
-        # sqrt_one_minus_alphas_cumprod = np.sqrt(1.0 - alphas_cumprod)
+        alphas_cumprod_prev = alphas_cumprod.copy()
+        alphas_cumprod_prev[1:] = alphas_cumprod[:-1]
+        alphas_cumprod_prev[0] = 1.0
+        self.alphas_cumprod_prev = alphas_cumprod_prev
 
-        self.sqrt_alphas_cumprod = sqrt_alphas_cumprod
+        self.sqrt_recip_alphas = sqrt_recip_alphas = np.sqrt(1.0 / alphas)
+
+        self.sqrt_alphas_cumprod = sqrt_alphas_cumprod = np.sqrt(alphas_cumprod)
+        self.sqrt_one_minus_alphas_cumprod = sqrt_one_minus_alphas_cumprod = np.sqrt(
+            1.0 - alphas_cumprod
+        )
+        self.posterior_variance = posterior_variance = (
+            betas * (1.0 - alphas_cumprod_prev) / (1.0 - alphas_cumprod)
+        )
 
         return
 
-    def get_alphas(self, t):
+    def get_coeffs_for_train(self, t):
         # t時点の各種係数の値を返す
         sqrt_alphas_cumprod_t = self.sqrt_alphas_cumprod[t]
         sqrt_one_minus_alphas_cumprod_t = np.sqrt(1.0 - sqrt_alphas_cumprod_t)
         return sqrt_alphas_cumprod_t, sqrt_one_minus_alphas_cumprod_t
 
+    def get_coeffs_for_generation(self, t):
+        # t時点の各種係数の値を返す
+        sqrt_recip_alphas_t = self.sqrt_recip_alphas[t]
+        sqrt_one_minus_alphas_cumprod_t = self.sqrt_one_minus_alphas_cumprod[t]
+        sqrt_betas_t = self.betas[t]
+        betas_t_div_sqrt_one_minus_alphas_cumprod_t = (
+            sqrt_betas_t / sqrt_one_minus_alphas_cumprod_t
+        )
+        posterior_variance_t = self.posterior_variance[t]
+        return (
+            sqrt_recip_alphas_t,
+            betas_t_div_sqrt_one_minus_alphas_cumprod_t,
+            posterior_variance_t,
+        )
+
     def train(self, dataset, epochs=5, batch_size=16):
         # Init models
-        device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        device = self.device
 
         model = self.model
         model.to(device)
@@ -104,6 +128,7 @@ class DiffusionModel(object):
                         data = data[0]
                     data = data.to("cpu").detach().numpy().copy()
                     batch_size = data.shape[0]
+                    img_shape = data.shape[1:]
                     # data = data.to(device)
 
                     ##############################
@@ -131,8 +156,8 @@ class DiffusionModel(object):
                         ## 学習させるタイムスタンプをランダムに選ぶ
                         t = np.random.randint(0, self.timestep)
 
-                        ## その時点でのalphaなどを計算
-                        coeff_x0, coeff_noise = self.get_alphas(t)
+                        ## その時点での各種係数を計算
+                        coeff_x0, coeff_noise = self.get_coeffs_for_train(t)
 
                         ## 上記alphaなどの値を使って、学習画像(xt)を準備する
                         xt = x0 * coeff_x0 + noise_gt * coeff_noise
@@ -164,10 +189,79 @@ class DiffusionModel(object):
 
                     # 表示
                     tepoch.set_postfix(loss=loss.item())
+                    break
+
+            model.evaluate()
+
             # モデルの保存
-            model_path = f"{self.working_dir}/modelss/model_{iEpoch}.pt"
+            model_path = f"{self.working_dir}/models/model_{iEpoch}.pt"
             os.makedirs(os.path.dirname(model_path), exist_ok=True)
             torch.save(model.to("cpu").state_dict(), model_path)
+
+            # 画像の保存
+            image_path = f"{self.working_dir}/images/image_{iEpoch}.png"
+            os.makedirs(os.path.dirname(image_path), exist_ok=True)
+            all_imgs = []
+            for i in range(5):
+                imgs = self.generate(img_shape=img_shape)
+                imgs = imgs[np.linspace(0, self.timestep, 5, dtype=np.int)]
+                all_imgs.append([imgs[i] for i in range(imgs.shape[0])])
+            self.plot(imgs, output=image_path)
+
+    @torch.no_grad()
+    def generate(self, img_shape):
+        # start from pure noise (for each example in the batch)
+        imgs = []
+        device = self.device
+
+        # Start from pure noise
+        img = torch.randn(img_shape, device=device)
+
+        # loop to generate
+        for t in tqdm.tqdm(range(0, self.timestep)[::-1], total=self.timestep):
+
+            (
+                coeff_normalize,
+                coeff_noise,
+                additional_noise_sigma,
+            ) = self.get_coeffs_for_generation(t)
+
+            if t == 0:
+                additional_noise_sigma = 0.0
+
+            noise_estimate = self.model(img)
+
+            additional_noise = np.sqrt(additional_noise_sigma) * np.random.randn(
+                *(img.shape)
+            )
+            img = (
+                coeff_normalize * (img - coeff_noise * noise_estimate)
+                + additional_noise
+            )
+
+            imgs.append(img.cpu().numpy())
+
+        return imgs
+
+    def plot(self, imgs, output=None):
+        if not isinstance(imgs[0], list):
+            # Make a 2d grid even if there's just 1 row
+            imgs = [imgs]
+
+        num_rows = len(imgs)
+        num_cols = len(imgs[0])
+
+        fig, axs = plt.subplots(
+            figsize=(200, 200), nrows=num_rows, ncols=num_cols, squeeze=False
+        )
+        for row_idx, row in enumerate(imgs):
+            for col_idx, img in enumerate(row):
+                ax = axs[row_idx, col_idx]
+                img_PIL = Image.fromarray(((img + 1.0) / 2.0 * 255.0).astype(np.uint8))
+                ax.imshow(np.asarray(img_PIL))
+                ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
+
+        plt.tight_layout()
 
 
 if __name__ == "__main__":
