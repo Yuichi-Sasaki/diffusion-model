@@ -291,10 +291,10 @@ class DiffusionModel(object):
 
 if __name__ == "__main__":
     # UNetを作成
-    model = UNet(n_channels=3, gpu=0)
+    model = UNet(n_channels=3)
 
     # DiffusionModelを作成
-    diff = DiffusionModel(model, timesteps=1000, working_dir="working/cifar10_1")
+    diff = DiffusionModel(model, timesteps=1000, gpu=0, working_dir="working/cifar10_1")
 
     # データを読み込む
     dataset = torchvision.datasets.CIFAR10(
