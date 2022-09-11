@@ -286,13 +286,13 @@ class DiffusionModel(object):
 
 if __name__ == "__main__":
     # UNetを作成
-    model = UNet(n_channels=1)
+    model = UNet(n_channels=3)
 
     # DiffusionModelを作成
-    diff = DiffusionModel(model, timesteps=200, working_dir="working/fashion_mnist_1")
+    diff = DiffusionModel(model, timesteps=1000, working_dir="working/cifar10_1")
 
     # データを読み込む
-    dataset = torchvision.datasets.FashionMNIST(
+    dataset = torchvision.datasets.CIFAR10(
         root="./datasets",
         train=True,
         transform=diff.get_data_transform(),
@@ -300,4 +300,10 @@ if __name__ == "__main__":
     )
 
     # 学習を実行
-    diff.train(dataset, epochs=50, batch_size=64)
+    diff.train(dataset, epochs=2000, batch_size=128)
+
+####
+# EMA未実装
+# Dropout=0.1を入れていない
+# Horizontal Flip未実装
+# Timestep embedding未実装
