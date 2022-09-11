@@ -307,4 +307,4 @@ if __name__ == "__main__":
     )
 
     # 学習を実行
-    diff.train(dataset, epochs=20, batch_size=64)
+    diff.train(dataset, epochs=50, batch_size=64)
