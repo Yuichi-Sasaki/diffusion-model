@@ -23,11 +23,13 @@ from models.unet2 import UNet
 
 
 class DiffusionModel(object):
-    def __init__(self, model, timesteps, working_dir="working/test"):
+    def __init__(self, model, timesteps, gpu=-1, working_dir="working/test"):
         self.model = model
         self.timesteps = timesteps
         self.working_dir = working_dir
-        self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        self.device = (
+            f"cuda:{gpu}" if (torch.cuda.is_available() and gpu >= 0) else "cpu"
+        )
         self.output_fig_size = (20, 20)
         self.prepare_alphas()
         super().__init__()
@@ -286,7 +288,7 @@ class DiffusionModel(object):
 
 if __name__ == "__main__":
     # UNetを作成
-    model = UNet(n_channels=3)
+    model = UNet(n_channels=3, gpu=0)
 
     # DiffusionModelを作成
     diff = DiffusionModel(model, timesteps=1000, working_dir="working/cifar10_1")
