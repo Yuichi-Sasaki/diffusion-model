@@ -104,7 +104,7 @@ class DiffusionModel(object):
     def train(self, dataset, epochs=5, batch_size=16):
         # Init models
         self.model.to(self.device)
-        optimizer = Adam(self.model.parameters(), lr=1e-3)
+        optimizer = Adam(self.model.parameters(), lr=1e-4)
 
         # Prepare DataLoader
         dataloader = torch.utils.data.DataLoader(
@@ -159,6 +159,7 @@ class DiffusionModel(object):
 
                         ## その時点での各種係数を計算
                         coeff_x0, coeff_noise = self.get_coeffs_for_train(t)
+                        #print(t,coeff_x0,coeff_noise)
 
                         ## 上記alphaなどの値を使って、学習画像(xt)を準備する
                         xt = x0 * coeff_x0 + noise_gt * coeff_noise
@@ -307,4 +308,4 @@ if __name__ == "__main__":
     )
 
     # 学習を実行
-    diff.train(dataset, epochs=50, batch_size=64)
+    diff.train(dataset, epochs=200, batch_size=64)
