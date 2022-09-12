@@ -206,7 +206,7 @@ class DiffusionModel(object):
 
             self.model.train(False)
 
-            if iEpoch % 20 > 0:
+            if iEpoch % 1 > 0:
                 continue
             # モデルの保存
             model_path = f"{self.working_dir}/models/model_{iEpoch:04d}.pt"
@@ -321,4 +321,4 @@ if __name__ == "__main__":
     )
 
     # 学習を実行
-    diff.train(dataset, epochs=2000, batch_size=128)
+    diff.train(dataset, epochs=50, batch_size=128)

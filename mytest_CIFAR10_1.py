@@ -40,7 +40,7 @@ class DiffusionModel(object):
     def get_data_transform():
         # 入力画像は、(-1,1)に規格化する (ノイズのレンジとの整合性をとるため)
         transform = Compose(
-            [RandomHorizontalFlip(), ToTensor(), Lambda(lambda t: (t / 255.0 * 2) - 1)]
+            [RandomHorizontalFlip(), ToTensor(), Lambda(lambda t: (t * 2) - 1)]
         )
         return transform
 
@@ -199,7 +199,7 @@ class DiffusionModel(object):
 
             self.model.train(False)
 
-            if iEpoch%20>0: continue
+            if iEpoch%5>0: continue
             # モデルの保存
             model_path = f"{self.working_dir}/models/model_{iEpoch:04d}.pt"
             os.makedirs(os.path.dirname(model_path), exist_ok=True)
@@ -295,7 +295,7 @@ if __name__ == "__main__":
     model = UNet(n_channels=3)
 
     # DiffusionModelを作成
-    diff = DiffusionModel(model, timesteps=1000, gpu=0, working_dir="/shared/y_sasaki/works/diffusion_model/working/cifar10_1")
+    diff = DiffusionModel(model, timesteps=1000, gpu=1, working_dir="/shared/y_sasaki/works/diffusion_model/working/cifar10_1")
 
     # データを読み込む
     dataset = torchvision.datasets.CIFAR10(
