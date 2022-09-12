@@ -15,7 +15,7 @@ diff = DiffusionModel(
 )
 
 # データを読み込む
-dataset = torchvision.datasets.FashionMNIST(
+dataset = torchvision.datasets.MNIST(
     root="./datasets",
     train=True,
     transform=diff.get_data_transform(),

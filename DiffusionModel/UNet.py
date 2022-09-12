@@ -56,7 +56,9 @@ class ConvNextBlock(nn.Module):
             nn.Conv2d(in_channels, out_channels * multiplier, kernel_size=3, padding=1),
             nn.GELU(),
             nn.GroupNorm(1, out_channels * multiplier),
-            nn.Conv2d(out_channels * multiplier, out_channels, kernel_size=3, padding=1),
+            nn.Conv2d(
+                out_channels * multiplier, out_channels, kernel_size=3, padding=1
+            ),
         )
 
         if in_channels == out_channels:
@@ -77,6 +79,34 @@ class ConvNextBlock(nn.Module):
         h = h + self.conv2(x)
 
         return h
+
+
+class DownSample(nn.Module):
+    def __init__(self, in_channels):
+        super().__init__()
+        self.conv = nn.Conv2d(
+            in_channels, in_channels, kernel_size=3, stride=2, padding=1
+        )
+
+    def forward(self, x):
+        return self.conv(x)
+
+
+class UpSample(nn.Module):
+    def __init__(self, in_channels):
+        super().__init__()
+
+        self.conv = nn.ConvTranspose2d(
+            in_channels, in_channels, kernel_size=2, stride=2
+        )
+
+    def forward(self, x1, x2):
+        x1 = self.conv(x1)
+        diffY = x2.size()[2] - x1.size()[2]
+        diffX = x2.size()[3] - x1.size()[3]
+        x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2, diffY // 2, diffY - diffY // 2])
+        x = torch.cat([x2, x1], dim=1)
+        return x
 
 
 class Block(nn.Module):
@@ -109,13 +139,9 @@ class Block(nn.Module):
         self.norm = nn.GroupNorm(1, out_channels)
 
         if sampling == "up":
-            self.sampling = nn.ConvTranspose2d(
-                out_channels, out_channels, kernel_size=4, stride=2, padding=1
-            )
+            self.sampling = UpSample(out_channels)
         elif sampling == "down":
-            self.sampling = nn.Conv2d(
-                out_channels, out_channels, kernel_size=4, stride=2, padding=1
-            )
+            self.sampling = DownSample(out_channels)
         else:
             self.sampling = nn.Identity()
 
