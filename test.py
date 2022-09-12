@@ -15,7 +15,7 @@ diff = DiffusionModel(
 )
 
 # データを読み込む
-dataset = torchvision.datasets.CIFAR10(
+dataset = torchvision.datasets.FashionMNIST(
     root="./datasets",
     train=True,
     transform=diff.get_data_transform(),
@@ -28,5 +28,5 @@ diff.train(
     epochs=200,
     batch_size=128,
     lr=1e-3,
-    plot_timestamps=[100, 150, 180, 190, 199],
+    plot_timesteps=[100, 150, 180, 190, 199],
 )

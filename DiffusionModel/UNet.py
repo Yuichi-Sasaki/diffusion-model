@@ -34,7 +34,7 @@ class ConvNextBlock(nn.Module):
         in_channels,
         out_channels,
         time_embed_dim=None,
-        multplier=2,
+        multiplier=2,
         normalize=True,
     ):
         super().__init__()
@@ -48,21 +48,21 @@ class ConvNextBlock(nn.Module):
             self.time_embed_module = None
 
         self.conv1 = nn.Conv2d(
-            in_channels, in_channels, 7, padding=3, groups=in_channels
+            in_channels, in_channels, kernel_size=7, padding=3, groups=in_channels
         )
 
         self.block = nn.Sequential(
             nn.GroupNorm(1, in_channels) if normalize else nn.Identity(),
-            nn.Conv2d(in_channels, out_channels * multplier, 3, padding=1),
+            nn.Conv2d(in_channels, out_channels * multiplier, kernel_size=3, padding=1),
             nn.GELU(),
-            nn.GroupNorm(1, out_channels * multplier),
-            nn.Conv2d(out_channels * multplier, out_channels, 3, padding=1),
+            nn.GroupNorm(1, out_channels * multiplier),
+            nn.Conv2d(out_channels * multiplier, out_channels, kernel_size=3, padding=1),
         )
 
         if in_channels == out_channels:
             self.conv2 = nn.Identity()
         else:
-            self.conv2 = nn.Conv2d(in_channels, out_channels, 1)
+            self.conv2 = nn.Conv2d(in_channels, out_channels, kernel_size=1)
 
     def forward(self, x, time_embed=None):
         h = self.conv1(x)
@@ -74,7 +74,7 @@ class ConvNextBlock(nn.Module):
 
         h = self.block(h)
 
-        h = h + self.conv2(h)
+        h = h + self.conv2(x)
 
         return h
 
@@ -110,11 +110,11 @@ class Block(nn.Module):
 
         if sampling == "up":
             self.sampling = nn.ConvTranspose2d(
-                out_channels, out_channels, kernel=4, stride=2, padding=1
+                out_channels, out_channels, kernel_size=4, stride=2, padding=1
             )
         elif sampling == "down":
             self.sampling = nn.Conv2d(
-                out_channels, out_channels, kernel=4, stride=2, padding=1
+                out_channels, out_channels, kernel_size=4, stride=2, padding=1
             )
         else:
             self.sampling = nn.Identity()
@@ -133,7 +133,7 @@ class UNet(nn.Module):
     def __init__(
         self,
         in_channels=3,
-        dims=[32, 64, 128, 256],
+        dims=[32, 64, 128, 256, 512],
         enable_time_embedding=True,
         use_attention=False,
         representative_time_dim=32,
@@ -154,7 +154,7 @@ class UNet(nn.Module):
             self.time_embed_module = None
 
         # layers
-        self.conv1 = nn.Conv2d(in_channels, dims[0], kernel=7, padding=3)
+        self.conv1 = nn.Conv2d(in_channels, dims[0], kernel_size=7, padding=3)
         self.block_down_1 = Block(
             dims[0],
             dims[1],
@@ -230,7 +230,7 @@ class UNet(nn.Module):
             attention=use_attention,
         )
 
-        self.conv2 = nn.Conv2d(dims[0] * 2, in_channels, kernel=7, padding=3)
+        self.conv2 = nn.Conv2d(dims[0] * 2, in_channels, kernel_size=1)
 
     def forward(self, x, time):
         if self.time_embed_module is not None:
@@ -238,18 +238,24 @@ class UNet(nn.Module):
         else:
             t = None
 
-        h0 = self.init_conv(x)
+        h0 = self.conv1(x)
 
+        print(h0.shape)
         h1 = self.block_down_1(h0, t)
+        print(h1.shape)
         h2 = self.block_down_2(h1, t)
+        print(h2.shape)
         h3 = self.block_down_3(h2, t)
+        print(h3.shape)
         h4 = self.block_down_4(h3, t)
+        print(h4.shape)
 
         h = h4
         h = self.block_mid_1(h, t)
         h = self.block_mid_2(h, t)
 
         h = self.block_up_4(torch.cat((h, h4), dim=1), t)
+        print(h.shape, h3.shape)
         h = self.block_up_3(torch.cat((h, h3), dim=1), t)
         h = self.block_up_2(torch.cat((h, h2), dim=1), t)
         h = self.block_up_1(torch.cat((h, h1), dim=1), t)
