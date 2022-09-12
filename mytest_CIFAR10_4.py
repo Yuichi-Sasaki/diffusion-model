@@ -10,7 +10,7 @@ import tqdm
 from PIL import Image
 from torch import einsum, nn
 from torch.optim import Adam
-#from torch_ema import ExponentialMovingAverage
+from torch_ema import ExponentialMovingAverage
 from torchvision.transforms import (
     CenterCrop,
     Compose,
@@ -41,7 +41,7 @@ class DiffusionModel(object):
     def get_data_transform():
         # 入力画像は、(-1,1)に規格化する (ノイズのレンジとの整合性をとるため)
         transform = Compose(
-            [RandomHorizontalFlip(), ToTensor(), Lambda(lambda t: (t / 255.0 * 2) - 1)]
+            [RandomHorizontalFlip(), ToTensor(), Lambda(lambda t: (t * 2) - 1)]
         )
         return transform
 
@@ -110,7 +110,7 @@ class DiffusionModel(object):
     def train(self, dataset, epochs=5, batch_size=16):
         # Init models
         self.model.to(self.device)
-        optimizer = Adam(self.model.parameters(), lr=1e-3)
+        optimizer = Adam(self.model.parameters(), lr=2e-4)
         #ema = ExponentialMovingAverage(self.model.parameters(), decay=0.9999)
 
         # Prepare DataLoader
@@ -206,12 +206,12 @@ class DiffusionModel(object):
 
             self.model.train(False)
 
-            if iEpoch % 1 > 0:
+            if iEpoch % 20 > 0:
                 continue
             # モデルの保存
-            #model_path = f"{self.working_dir}/models/model_{iEpoch:04d}.pt"
-            #os.makedirs(os.path.dirname(model_path), exist_ok=True)
-            #torch.save(self.model.to("cpu").state_dict(), model_path)
+            model_path = f"{self.working_dir}/models/model_{iEpoch:04d}.pt"
+            os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            torch.save(self.model.to("cpu").state_dict(), model_path)
 
             # 画像の保存
             image_path = f"{self.working_dir}/images/image_{iEpoch:04d}.png"
@@ -219,7 +219,7 @@ class DiffusionModel(object):
             all_imgs = []
             for i in range(5):
                 imgs = self.generate(img_shape=img_shape, seed=i)
-                imgs_pick = [imgs[0],imgs[100],imgs[150],imgs[198],imgs[199],]
+                imgs_pick = [imgs[j] for j in [500,800,900,950,999]]
                 all_imgs.append(imgs_pick)
             self.plot(all_imgs, output=image_path)
 
@@ -295,18 +295,19 @@ class DiffusionModel(object):
 
 if __name__ == "__main__":
     # UNetを作成
-    model = Unet(dim=28, channels=1, dim_mults=(1, 2, 4,))
+    #model = UNet(n_channels=3)
+    model = Unet(dim=28, channels=3, dim_mults=(1, 2, 4,))
 
     # DiffusionModelを作成
     diff = DiffusionModel(
         model,
-        timesteps=200,
-        gpu=0,
-        working_dir="/shared/y_sasaki/works/diffusion_model/working/reproduce_1",
+        timesteps=1000,
+        gpu=2,
+        working_dir="/shared/y_sasaki/works/diffusion_model/working/cifar10_4",
     )
 
     # データを読み込む
-    dataset = torchvision.datasets.FashionMNIST(
+    dataset = torchvision.datasets.CIFAR10(
         root="./datasets",
         train=True,
         transform=diff.get_data_transform(),
@@ -314,4 +315,4 @@ if __name__ == "__main__":
     )
 
     # 学習を実行
-    diff.train(dataset, epochs=200, batch_size=128)
+    diff.train(dataset, epochs=2000, batch_size=128)
