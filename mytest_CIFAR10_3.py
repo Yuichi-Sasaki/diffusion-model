@@ -21,7 +21,7 @@ from torchvision.transforms import (
     ToTensor,
 )
 
-from models.unet2 import UNet
+from models.unet_embed import UNet
 
 
 class DiffusionModel(object):
@@ -250,7 +250,7 @@ class DiffusionModel(object):
 
             img_tensor = np.array([img])  # batchの軸を加える
             img_tensor = torch.Tensor(img_tensor).to(self.device)  # Tensorにして、GPUへ送る
-            noise_estimate_tensor = self.model(img_tensor, torch.Tensor([t]))
+            noise_estimate_tensor = self.model(img_tensor, torch.Tensor([t]).to(self.device))
             noise_estimate = (
                 noise_estimate_tensor[0].cpu().numpy()
             )  # batch軸を除いて、numpy形式にする
@@ -306,7 +306,7 @@ if __name__ == "__main__":
     diff = DiffusionModel(
         model,
         timesteps=1000,
-        gpu=1,
+        gpu=2,
         working_dir="/shared/y_sasaki/works/diffusion_model/working/cifar10_3",
     )
 
