@@ -1,9 +1,10 @@
 import math
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
-from Attention import LinearAttention
+from .Attention import LinearAttention
 
 
 class SinusoidalPositionEmbeddings(nn.Module):
@@ -94,16 +95,11 @@ class DownSample(nn.Module):
         return self.conv(x)
 
 
-class UpSample(nn.Module):
-    def __init__(self, in_channels):
+class FlexibleConcat(nn.Module):
+    def __init__(self):
         super().__init__()
 
-        self.conv = nn.ConvTranspose2d(
-            in_channels, in_channels, kernel_size=2, stride=2
-        )
-
     def forward(self, x1, x2):
-        x1 = self.conv(x1)
         diffY = x2.size()[2] - x1.size()[2]
         diffX = x2.size()[3] - x1.size()[3]
         x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2, diffY // 2, diffY - diffY // 2])
@@ -141,9 +137,15 @@ class Block(nn.Module):
         self.norm = nn.GroupNorm(1, out_channels)
 
         if sampling == "up":
-            self.sampling = UpSample(out_channels)
+            # self.sampling = UpSample(out_channels)
+            self.sampling = nn.ConvTranspose2d(
+                out_channels, out_channels, kernel_size=2, stride=2
+            )
         elif sampling == "down":
-            self.sampling = DownSample(out_channels)
+            # self.sampling = DownSample(out_channels)
+            self.sampling = nn.Conv2d(
+                out_channels, out_channels, kernel_size=3, stride=2, padding=1
+            )
         else:
             self.sampling = nn.Identity()
 
@@ -180,6 +182,8 @@ class UNet(nn.Module):
         else:
             time_embed_dim = None
             self.time_embed_module = None
+
+        self.cat = FlexibleConcat()
 
         # layers
         self.conv1 = nn.Conv2d(in_channels, dims[0], kernel_size=7, padding=3)
@@ -258,7 +262,7 @@ class UNet(nn.Module):
             attention=use_attention,
         )
 
-        self.conv2 = nn.Conv2d(dims[0] * 2, in_channels, kernel_size=1)
+        self.conv2 = nn.Conv2d(dims[0], in_channels, kernel_size=3)
 
     def forward(self, x, time):
         if self.time_embed_module is not None:
@@ -282,11 +286,14 @@ class UNet(nn.Module):
         h = self.block_mid_1(h, t)
         h = self.block_mid_2(h, t)
 
-        h = self.block_up_4(torch.cat((h, h4), dim=1), t)
-        print(h.shape, h3.shape)
-        h = self.block_up_3(torch.cat((h, h3), dim=1), t)
-        h = self.block_up_2(torch.cat((h, h2), dim=1), t)
-        h = self.block_up_1(torch.cat((h, h1), dim=1), t)
+        h = self.block_up_4(self.cat(h, h4), t)
+        print(h.shape)
+        h = self.block_up_3(self.cat(h, h3), t)
+        print(h.shape)
+        h = self.block_up_2(self.cat(h, h2), t)
+        print(h.shape)
+        h = self.block_up_1(self.cat(h, h1), t)
+        print(h.shape)
 
         h = self.conv2(h)
 
