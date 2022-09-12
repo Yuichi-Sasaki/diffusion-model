@@ -3,6 +3,8 @@ import math
 import torch
 from torch import nn
 
+from Attention import LinearAttention
+
 
 class SinusoidalPositionEmbeddings(nn.Module):
     """
@@ -116,7 +118,7 @@ class Block(nn.Module):
         out_channels,
         time_embed_dim=None,
         sampling=None,
-        attention=False,
+        attention=True,
         multiplier=2,
     ):
         super().__init__()
@@ -133,7 +135,7 @@ class Block(nn.Module):
             multiplier=multiplier,
         )
         if attention:
-            raise NotImplementedError()
+            self.attention = LinearAttention(out_channels)
         else:
             self.attention = nn.Identity()
         self.norm = nn.GroupNorm(1, out_channels)
