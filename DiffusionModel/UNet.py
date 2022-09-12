@@ -262,7 +262,7 @@ class UNet(nn.Module):
             attention=use_attention,
         )
 
-        self.conv2 = nn.Conv2d(dims[0], in_channels, kernel_size=3)
+        self.conv2 = nn.Conv2d(dims[0], in_channels, kernel_size=1)
 
     def forward(self, x, time):
         if self.time_embed_module is not None:
@@ -272,28 +272,19 @@ class UNet(nn.Module):
 
         h0 = self.conv1(x)
 
-        print(h0.shape)
         h1 = self.block_down_1(h0, t)
-        print(h1.shape)
         h2 = self.block_down_2(h1, t)
-        print(h2.shape)
         h3 = self.block_down_3(h2, t)
-        print(h3.shape)
         h4 = self.block_down_4(h3, t)
-        print(h4.shape)
 
         h = h4
         h = self.block_mid_1(h, t)
         h = self.block_mid_2(h, t)
 
         h = self.block_up_4(self.cat(h, h4), t)
-        print(h.shape)
         h = self.block_up_3(self.cat(h, h3), t)
-        print(h.shape)
         h = self.block_up_2(self.cat(h, h2), t)
-        print(h.shape)
         h = self.block_up_1(self.cat(h, h1), t)
-        print(h.shape)
 
         h = self.conv2(h)
 
