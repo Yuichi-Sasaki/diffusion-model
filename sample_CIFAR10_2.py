@@ -9,15 +9,15 @@ model = UNet(in_channels=3, enable_time_embedding=True)
 # DiffusionModelを作成
 diff = DiffusionModel(
     model,
-    timesteps=200,
+    timesteps=1000,
     gpu=1,
-    working_dir="/shared/y_sasaki/works/diffusion_model/working/sample_CelebA",
+    working_dir="/shared/y_sasaki/works/diffusion_model/working/sample_CIFAR10_2",
 )
 
 # データを読み込む
-dataset = torchvision.datasets.CelebA(
+dataset = torchvision.datasets.CIFAR10(
     root="./datasets",
-    split="Train",
+    train=True,
     transform=diff.get_data_transform(),
     download=True,
 )
@@ -25,10 +25,11 @@ dataset = torchvision.datasets.CelebA(
 # 学習を実行
 diff.train(
     dataset,
-    epochs=2000,
+    epochs=1000,
     batch_size=128,
     lr=2e-4,
-    plot_timesteps=[100, 150, 180, 190, 199],
+    plot_timesteps=[500, 750, 900, 990, 999],
     save_freq=100,
-    generate_freq=1,
+    generate_freq=5,
+    loss_type="l2",
 )

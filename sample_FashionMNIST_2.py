@@ -4,20 +4,20 @@ from DiffusionModel.DiffusionModel import DiffusionModel
 from DiffusionModel.UNet import UNet
 
 # UNetを作成
-model = UNet(in_channels=3, enable_time_embedding=True)
+model = UNet(in_channels=1, enable_time_embedding=True)
 
 # DiffusionModelを作成
 diff = DiffusionModel(
     model,
     timesteps=200,
-    gpu=1,
-    working_dir="/shared/y_sasaki/works/diffusion_model/working/sample_CelebA",
+    gpu=0,
+    working_dir="/shared/y_sasaki/works/diffusion_model/working/sample_FashionMNIST",
 )
 
 # データを読み込む
-dataset = torchvision.datasets.CelebA(
+dataset = torchvision.datasets.FashionMNIST(
     root="./datasets",
-    split="Train",
+    train=True,
     transform=diff.get_data_transform(),
     download=True,
 )
@@ -25,10 +25,10 @@ dataset = torchvision.datasets.CelebA(
 # 学習を実行
 diff.train(
     dataset,
-    epochs=2000,
+    epochs=50,
     batch_size=128,
-    lr=2e-4,
+    lr=1e-3,
     plot_timesteps=[100, 150, 180, 190, 199],
-    save_freq=100,
-    generate_freq=1,
+    save_freq=10,
+    generate_freq=5,
 )
