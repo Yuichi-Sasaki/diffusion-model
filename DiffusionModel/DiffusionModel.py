@@ -22,13 +22,14 @@ from torchvision.transforms import (
 
 
 class DiffusionModel(object):
-    def __init__(self, model, timesteps, gpu=-1, working_dir="working/test"):
-        self.model = model
+    def __init__(self, model, timesteps, gpu="-1", working_dir="working/test"):
+        self.model = torch.nn.DataParallel(model)
         self.timesteps = timesteps
         self.working_dir = working_dir
         self.device = (
             f"cuda:{gpu}" if (torch.cuda.is_available() and gpu >= 0) else "cpu"
         )
+        #self.use_multi_gpu = "len(gpu.split(",")) > 1"
         self.output_fig_size = (20, 20)
         self.prepare_alphas()
         super().__init__()
