@@ -36,9 +36,9 @@ diff.train(
     dataset,
     epochs=2000,
     batch_size=args.batch_size,
-    lr=2e-4,
+    lr=2e-4*diff.n_gpus,
     plot_timesteps=[500, 750, 900, 990, 999],
     save_freq=5,
     generate_freq=1,
-    loss_type="l2",
+    num_workers=self.n_gpus*4,
 )
