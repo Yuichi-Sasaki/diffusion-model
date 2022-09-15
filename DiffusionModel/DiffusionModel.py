@@ -23,13 +23,14 @@ from torchvision.transforms import (
 
 class DiffusionModel(object):
     def __init__(self, model, timesteps, gpu="-1", working_dir="working/test"):
-        self.model = torch.nn.DataParallel(model)
+        self.model = model
         self.timesteps = timesteps
         self.working_dir = working_dir
         self.device = (
-            f"cuda:{gpu}" if (torch.cuda.is_available() and gpu >= 0) else "cpu"
+            "cuda" if (torch.cuda.is_available() and gpu != "-1") else "cpu"
         )
-        #self.use_multi_gpu = "len(gpu.split(",")) > 1"
+        self.gpu = gpu
+        self.n_gpus = len(gpu.split(",")) if gpu!="-1" else 0
         self.output_fig_size = (20, 20)
         self.prepare_alphas()
         super().__init__()
@@ -120,7 +121,9 @@ class DiffusionModel(object):
     ):
         assert max(plot_timesteps) < self.timesteps
         # Init models
+        os.environ["CUDA_VISIBLE_DEVICES"] = self.gpu
         self.model.to(self.device)
+        self.model = torch.nn.DataParallel(self.model)
         optimizer = Adam(self.model.parameters(), lr=lr)
         if ema_decay is not None:
             ema = ExponentialMovingAverage(self.model.parameters(), decay=ema_decay)

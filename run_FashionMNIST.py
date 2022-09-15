@@ -7,7 +7,7 @@ from DiffusionModel.UNet import UNet
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--working_dir", type=str, default="working/FashionMNIST")
-parser.add_argument("--gpu", type=int, default=0)
+parser.add_argument("--gpu", type=int, default="-1")
 parser.add_argument("--batch_size", type=int, default=128)
 args = parser.parse_args()
 
