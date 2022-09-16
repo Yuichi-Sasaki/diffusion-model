@@ -226,7 +226,10 @@ class DiffusionModel(object):
             if iEpoch % save_freq == 0:
                 model_path = f"{self.working_dir}/models/model_{iEpoch:04d}.pt"
                 os.makedirs(os.path.dirname(model_path), exist_ok=True)
-                torch.save(self.model.to("cpu").state_dict(), model_path)
+                if self.n_gpus>1:
+                    torch.save(self.model.module.to("cpu").state_dict(), model_path)
+                else:
+                    torch.save(self.model.to("cpu").state_dict(), model_path)
 
             # 画像の保存
             if iEpoch % generate_freq == 0:
