@@ -30,6 +30,8 @@ class DiffusionModel(object):
         self.gpu_ids = [int(x) for x in gpu.split(",")] if gpu!="-1" else None
         self.n_gpus = len(self.gpu_ids) if gpu!="-1" else 0
         self.device = "cuda:{}".format(self.gpu_ids[0]) if self.n_gpus>0 else "cpu"
+        self.do_clip_noise = True
+        self.clip_grad = 1
 
         self.output_fig_size = (20, 20)
         self.prepare_alphas()
@@ -211,6 +213,8 @@ class DiffusionModel(object):
 
                     # lossを最小化するようパラメータを最適化する
                     loss.backward()
+                    if self.clip_grad is not None:
+                        torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad)
                     optimizer.step()
                     if ema_decay is not None:
                         ema.update()
@@ -276,6 +280,9 @@ class DiffusionModel(object):
             if t > 0:
                 additional_noise = np.random.randn(*(img.shape))
                 img += additional_noise * additional_noise_coeff
+
+            if self.do_clip_noise:
+                img = np.clip(img, -1., +1.)
 
             imgs.append(img)
 
