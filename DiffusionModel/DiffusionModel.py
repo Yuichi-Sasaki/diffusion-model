@@ -26,9 +26,13 @@ class DiffusionModel(object):
         self.model = model
         self.timesteps = timesteps
         self.working_dir = working_dir
-        self.device = "cuda" if (torch.cuda.is_available() and gpu != "-1") else "cpu"
-        self.gpu = gpu
-        self.n_gpus = len(gpu.split(",")) if gpu != "-1" else 0
+
+        self.gpu_ids = [int(x) for x in gpu.split(",")] if gpu != "-1" else None
+        self.n_gpus = len(self.gpu_ids) if gpu != "-1" else 0
+        self.device = "cuda:{}".format(self.gpu_ids[0]) if self.n_gpus > 0 else "cpu"
+        self.do_clip_noise = True
+        self.clip_grad = 1
+
         self.output_fig_size = (20, 20)
         self.prepare_alphas()
         super().__init__()
@@ -112,15 +116,17 @@ class DiffusionModel(object):
         lr=2e-4,
         num_workers=2,
         ema_decay=None,
+        loss_type="l2",
         save_freq=1,
         generate_freq=1,
         plot_timesteps=[0],
     ):
         assert max(plot_timesteps) < self.timesteps
         # Init models
-        os.environ["CUDA_VISIBLE_DEVICES"] = self.gpu
+        # os.environ["CUDA_VISIBLE_DEVICES"] = self.gpu
         self.model.to(self.device)
-        self.model = torch.nn.DataParallel(self.model)
+        if self.n_gpus > 1:
+            self.model = torch.nn.DataParallel(self.model, device_ids=self.gpu_ids)
         optimizer = Adam(self.model.parameters(), lr=lr)
         if ema_decay is not None:
             ema = ExponentialMovingAverage(self.model.parameters(), decay=ema_decay)
@@ -207,6 +213,10 @@ class DiffusionModel(object):
 
                     # lossを最小化するようパラメータを最適化する
                     loss.backward()
+                    if self.clip_grad is not None:
+                        torch.nn.utils.clip_grad_value_(
+                            self.model.parameters(), self.clip_grad
+                        )
                     optimizer.step()
                     if ema_decay is not None:
                         ema.update()
@@ -222,7 +232,10 @@ class DiffusionModel(object):
             if iEpoch % save_freq == 0:
                 model_path = f"{self.working_dir}/models/model_{iEpoch:04d}.pt"
                 os.makedirs(os.path.dirname(model_path), exist_ok=True)
-                torch.save(self.model.to("cpu").state_dict(), model_path)
+                if self.n_gpus > 1:
+                    torch.save(self.model.module.to("cpu").state_dict(), model_path)
+                else:
+                    torch.save(self.model.to("cpu").state_dict(), model_path)
 
             # 画像の保存
             if iEpoch % generate_freq == 0:
@@ -269,6 +282,9 @@ class DiffusionModel(object):
             if t > 0:
                 additional_noise = np.random.randn(*(img.shape))
                 img += additional_noise * additional_noise_coeff
+
+            if self.do_clip_noise:
+                img = np.clip(img, -1.0, +1.0)
 
             imgs.append(img)
 
