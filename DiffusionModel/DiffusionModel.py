@@ -189,7 +189,7 @@ class DiffusionModel(object):
                         xt = x0 * coeff_x0 + noise_gt * coeff_noise
                         # Note: 大体、-4 ~ +4くらいの範囲になる。果たしてこれは正しい振る舞いか？
                         if self.do_clip_noise:
-                            torch.clamp(xt, min=-1., max=+1.)
+                            xt = np.clip(xt, -1., +1.)
 
                         #print(t,xt.min(),xt.max(), coeff_x0, coeff_noise)
 
