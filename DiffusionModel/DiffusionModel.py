@@ -30,8 +30,8 @@ class DiffusionModel(object):
         self.gpu_ids = [int(x) for x in gpu.split(",")] if gpu!="-1" else None
         self.n_gpus = len(self.gpu_ids) if gpu!="-1" else 0
         self.device = "cuda:{}".format(self.gpu_ids[0]) if self.n_gpus>0 else "cpu"
-        self.do_clip_noise = True
-        self.clip_grad = 1
+        self.do_clip_noise = False
+        self.clip_grad = 0.1
 
         self.output_fig_size = (20, 20)
         self.prepare_alphas()
@@ -187,6 +187,11 @@ class DiffusionModel(object):
 
                         ## 上記alphaなどの値を使って、学習画像(xt)を準備する
                         xt = x0 * coeff_x0 + noise_gt * coeff_noise
+                        # Note: 大体、-4 ~ +4くらいの範囲になる。果たしてこれは正しい振る舞いか？
+                        if self.do_clip_noise:
+                            xt = torch.clamp(xt, min=-1., max=+1.)
+
+                        #print(t,xt.min(),xt.max(), coeff_x0, coeff_noise)
 
                         ###############
                         # 学習用のバッチに仕立てる
@@ -213,6 +218,11 @@ class DiffusionModel(object):
 
                     # lossを最小化するようパラメータを最適化する
                     loss.backward()
+                    #pList = []
+                    #for p in self.model.parameters():
+                    #    pList+=torch.flatten(p.grad).to("cpu").numpy().tolist()
+                    #print(min(pList),max(pList))
+
                     if self.clip_grad is not None:
                         torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad)
                     optimizer.step()
@@ -277,9 +287,14 @@ class DiffusionModel(object):
 
             img = coeff_normalize * (img - coeff_noise * noise_estimate)
 
+            #print("t",t)
             if t > 0:
                 additional_noise = np.random.randn(*(img.shape))
+                #print("additional_noise_coeff",additional_noise_coeff)
                 img += additional_noise * additional_noise_coeff
+            #print("max(img)",img.max())
+            #print("min(img)",img.min())
+            # Note: 大体、-4 ~ +4くらいの範囲になる。
 
             if self.do_clip_noise:
                 img = np.clip(img, -1., +1.)
