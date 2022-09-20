@@ -123,9 +123,9 @@ class DiffusionModel(object):
     ):
         assert max(plot_timesteps) < self.timesteps
         # Init models
-        #os.environ["CUDA_VISIBLE_DEVICES"] = self.gpu
+        # os.environ["CUDA_VISIBLE_DEVICES"] = self.gpu
         self.model.to(self.device)
-        if self.n_gpus>1:
+        if self.n_gpus > 1:
             self.model = torch.nn.DataParallel(self.model, device_ids=self.gpu_ids)
         optimizer = Adam(self.model.parameters(), lr=lr)
         if ema_decay is not None:
@@ -224,7 +224,9 @@ class DiffusionModel(object):
                     #print(min(pList),max(pList))
 
                     if self.clip_grad is not None:
-                        torch.nn.utils.clip_grad_value_(self.model.parameters(), self.clip_grad)
+                        torch.nn.utils.clip_grad_value_(
+                            self.model.parameters(), self.clip_grad
+                        )
                     optimizer.step()
                     if ema_decay is not None:
                         ema.update()
@@ -240,7 +242,7 @@ class DiffusionModel(object):
             if iEpoch % save_freq == 0:
                 model_path = f"{self.working_dir}/models/model_{iEpoch:04d}.pt"
                 os.makedirs(os.path.dirname(model_path), exist_ok=True)
-                if self.n_gpus>1:
+                if self.n_gpus > 1:
                     torch.save(self.model.module.to("cpu").state_dict(), model_path)
                 else:
                     torch.save(self.model.to("cpu").state_dict(), model_path)
@@ -297,7 +299,7 @@ class DiffusionModel(object):
             # Note: 大体、-4 ~ +4くらいの範囲になる。
 
             if self.do_clip_noise:
-                img = np.clip(img, -1., +1.)
+                img = np.clip(img, -1.0, +1.0)
 
             imgs.append(img)
 
