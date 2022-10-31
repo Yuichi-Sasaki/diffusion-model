@@ -271,7 +271,7 @@ class DiffusionModel(object):
 
             if t > 0:
                 additional_noise = np.random.randn(*(img.shape))
-                img += additional_noise * additional_noise_coeff
+                img += additional_noise * coeff_additional_noise
 
             if self.do_clip_noise:
                 img = np.clip(img, -1.0, +1.0)
