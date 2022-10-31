@@ -27,14 +27,14 @@ class DiffusionModel(object):
         self.timesteps = timesteps
         self.working_dir = working_dir
 
-        self.gpu_ids = [int(x) for x in gpu.split(",")] if gpu!="-1" else None
-        self.n_gpus = len(self.gpu_ids) if gpu!="-1" else 0
-        self.device = "cuda:{}".format(self.gpu_ids[0]) if self.n_gpus>0 else "cpu"
+        self.gpu_ids = [int(x) for x in gpu.split(",")] if gpu != "-1" else None
+        self.n_gpus = len(self.gpu_ids) if gpu != "-1" else 0
+        self.device = "cuda:{}".format(self.gpu_ids[0]) if self.n_gpus > 0 else "cpu"
         self.do_clip_noise = False
-        self.clip_grad = 0.1
+        self.clip_grad = 1.0
 
         self.output_fig_size = (20, 20)
-        self.prepare_alphas()
+        self.prepare_params()
         super().__init__()
         return
 
@@ -60,63 +60,53 @@ class DiffusionModel(object):
         )
         return reverse_transform(img)
 
-    def prepare_alphas(self):
-        # 完全なノイズになるまで、ノイズの大きさはtに対してリニアに増えていくスケジューリングを採用
+    def prepare_params(self):
+        # beta
         beta_start = 0.0001
-        beta_end = 0.02  # 0.02で良いの？
-        self.betas = betas = np.linspace(beta_start, beta_end, self.timesteps)
+        beta_end = 0.02  # 論文での設定値
+        self.beta = beta = np.linspace(beta_start, beta_end, self.timesteps)
 
-        # KL-divergenceの計算の中に登場する各種係数を計算する
-        self.alphas = alphas = 1.0 - betas
-        self.alphas_cumprod = alphas_cumprod = np.cumprod(alphas, axis=0)
+        # alpha
+        self.alpha = alpha = 1.0 - beta
 
-        alphas_cumprod_prev = alphas_cumprod.copy()
-        alphas_cumprod_prev[1:] = alphas_cumprod[:-1]
-        alphas_cumprod_prev[0] = 1.0
-        self.alphas_cumprod_prev = alphas_cumprod_prev
-
-        self.sqrt_recip_alphas = sqrt_recip_alphas = np.sqrt(1.0 / alphas)
-
-        self.sqrt_alphas_cumprod = sqrt_alphas_cumprod = np.sqrt(alphas_cumprod)
-        self.sqrt_one_minus_alphas_cumprod = sqrt_one_minus_alphas_cumprod = np.sqrt(
-            1.0 - alphas_cumprod
-        )
-        self.posterior_variance = posterior_variance = (
-            betas * (1.0 - alphas_cumprod_prev) / (1.0 - alphas_cumprod)
-        )
+        # alpha_bar (cumproduct)
+        self.alpha_bar = alpha_bar = np.cumprod(alpha, axis=0)
+        alpha_bar_prev = alpha_bar.copy()
+        alpha_bar_prev[1:] = alpha_bar[:-1]
+        alpha_bar_prev[0] = 1.0
+        self.alpha_bar_prev = alpha_bar_prev
 
         return
 
-    def get_coeffs_for_train(self, t):
-        # t時点の各種係数の値を返す
-        sqrt_alphas_cumprod_t = self.sqrt_alphas_cumprod[t]
-        sqrt_one_minus_alphas_cumprod_t = self.sqrt_one_minus_alphas_cumprod[t]
-        return sqrt_alphas_cumprod_t, sqrt_one_minus_alphas_cumprod_t
+    def get_coeffs_for_training(self, t):
+        # Algorithm1: Training
 
-    def get_coeffs_for_generation(self, t):
-        # t時点の各種係数の値を返す
-        sqrt_recip_alphas_t = self.sqrt_recip_alphas[t]
-        betas_t = self.betas[t]
-        sqrt_one_minus_alphas_cumprod_t = self.sqrt_one_minus_alphas_cumprod[t]
-        betas_t_div_sqrt_one_minus_alphas_cumprod_t = (
-            betas_t / sqrt_one_minus_alphas_cumprod_t
-        )
-        sqrt_posterior_variance_t = np.sqrt(self.posterior_variance[t])
-        return (
-            sqrt_recip_alphas_t,
-            betas_t_div_sqrt_one_minus_alphas_cumprod_t,
-            sqrt_posterior_variance_t,
-        )
+        coeff_x0 = np.sqrt(self.alpha_bar[t])  # x0に掛かる係数
+        coeff_noise = np.sqrt(1.0 - self.alpha_bar[t])  # epsilonに掛かる係数
+
+        return coeff_x0, coeff_noise
+
+    def get_coeffs_for_sampling(self, t):
+        # Algorithm2: Sampling
+
+        coeff_normalize = 1.0 / np.sqrt(self.alphas_bar[t])  # 全体に掛かる規格化係数
+        coeff_noise = (1.0 - self.alpha[t]) / np.sqrt(
+            1.0 - self.alpha_bar[t]
+        )  # epsilon_thetaに掛かる係数
+        coeff_additional_noise = np.sqrt(
+            (1.0 - self.alpha_bar_prev[t]) / (1.0 - self.alpha_bar[t]) * self.beta[t]
+        )  # zに掛かる係数
+
+        return (coeff_normalize, coeff_noise, coeff_additional_noise)
 
     def train(
         self,
         dataset,
-        epochs=5,
-        batch_size=16,
+        epochs=10,
+        batch_size=128,
         lr=2e-4,
         num_workers=2,
         ema_decay=None,
-        loss_type="l2",
         save_freq=1,
         generate_freq=1,
         plot_timesteps=[0],
@@ -183,15 +173,10 @@ class DiffusionModel(object):
                         t = np.random.randint(0, self.timesteps)
 
                         ## その時点での各種係数を計算
-                        coeff_x0, coeff_noise = self.get_coeffs_for_train(t)
+                        coeff_x0, coeff_noise = self.get_coeffs_for_training(t)
 
                         ## 上記alphaなどの値を使って、学習画像(xt)を準備する
                         xt = x0 * coeff_x0 + noise_gt * coeff_noise
-                        # Note: 大体、-4 ~ +4くらいの範囲になる。果たしてこれは正しい振る舞いか？
-                        if self.do_clip_noise:
-                            xt = np.clip(xt, -1., +1.)
-
-                        #print(t,xt.min(),xt.max(), coeff_x0, coeff_noise)
 
                         ###############
                         # 学習用のバッチに仕立てる
@@ -214,15 +199,10 @@ class DiffusionModel(object):
                     noise_predicted = self.model(x_batch, t_batch)
 
                     # 推定されたノイズと、GroundTruthのノイズが近いことを要求するようlossを計算する
-                    loss = F.mse_loss(y_batch, noise_predicted)
+                    loss = F.mse_loss(noise_predicted, y_batch)
 
                     # lossを最小化するようパラメータを最適化する
                     loss.backward()
-                    #pList = []
-                    #for p in self.model.parameters():
-                    #    pList+=torch.flatten(p.grad).to("cpu").numpy().tolist()
-                    #print(min(pList),max(pList))
-
                     if self.clip_grad is not None:
                         torch.nn.utils.clip_grad_value_(
                             self.model.parameters(), self.clip_grad
@@ -275,8 +255,8 @@ class DiffusionModel(object):
             (
                 coeff_normalize,
                 coeff_noise,
-                additional_noise_coeff,
-            ) = self.get_coeffs_for_generation(t)
+                coeff_additional_noise,
+            ) = self.get_coeffs_for_sampling(t)
 
             img_tensor = np.array([img])  # batchの軸を加える
             img_tensor = torch.Tensor(img_tensor).to(self.device)  # Tensorにして、GPUへ送る
@@ -289,14 +269,9 @@ class DiffusionModel(object):
 
             img = coeff_normalize * (img - coeff_noise * noise_estimate)
 
-            #print("t",t)
             if t > 0:
                 additional_noise = np.random.randn(*(img.shape))
-                #print("additional_noise_coeff",additional_noise_coeff)
                 img += additional_noise * additional_noise_coeff
-            #print("max(img)",img.max())
-            #print("min(img)",img.min())
-            # Note: 大体、-4 ~ +4くらいの範囲になる。
 
             if self.do_clip_noise:
                 img = np.clip(img, -1.0, +1.0)
