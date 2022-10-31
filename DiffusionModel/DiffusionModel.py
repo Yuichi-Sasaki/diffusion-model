@@ -89,7 +89,7 @@ class DiffusionModel(object):
     def get_coeffs_for_sampling(self, t):
         # Algorithm2: Sampling
 
-        coeff_normalize = 1.0 / np.sqrt(self.alphas_bar[t])  # 全体に掛かる規格化係数
+        coeff_normalize = 1.0 / np.sqrt(self.alpha_bar[t])  # 全体に掛かる規格化係数
         coeff_noise = (1.0 - self.alpha[t]) / np.sqrt(
             1.0 - self.alpha_bar[t]
         )  # epsilon_thetaに掛かる係数
