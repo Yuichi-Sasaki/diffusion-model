@@ -16,7 +16,7 @@ parser.add_argument("--load", type=str, default=None)
 args = parser.parse_args()
 
 # UNetを作成
-model = UNet(in_channels=3, enable_time_embedding=True)
+model = UNet(in_channels=3)
 if args.load is not None:
     print(model.load_state_dict(torch.load(args.load)))
 

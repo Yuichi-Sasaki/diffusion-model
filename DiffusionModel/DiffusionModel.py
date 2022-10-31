@@ -182,7 +182,7 @@ class DiffusionModel(object):
                         # 学習用のバッチに仕立てる
                         ###############
                         x_batch.append(xt)
-                        t_batch.append(t)
+                        t_batch.append([t])
                         y_batch.append(noise_gt)
 
                     # ListからTensorに変換して、学習可能な変数にする
@@ -261,7 +261,7 @@ class DiffusionModel(object):
             img_tensor = np.array([img])  # batchの軸を加える
             img_tensor = torch.Tensor(img_tensor).to(self.device)  # Tensorにして、GPUへ送る
             noise_estimate_tensor = self.model(
-                img_tensor, torch.Tensor([t]).to(self.device)
+                img_tensor, torch.Tensor([[t]]).to(self.device)
             )
             noise_estimate = (
                 noise_estimate_tensor[0].cpu().numpy()
