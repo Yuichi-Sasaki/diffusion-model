@@ -39,7 +39,7 @@ dataset = torchvision.datasets.MNIST(
 # 学習を実行
 diff.train(
     dataset,
-    epochs=20,
+    epochs=200,
     batch_size=args.batch_size,
     lr=args.lr*diff.n_gpus,
     plot_timesteps=[500, 750, 900, 990, 999],

@@ -13,6 +13,7 @@ parser.add_argument("--batch_size", type=int, default=128)
 parser.add_argument("--lr", type=float, default=2e-4)
 parser.add_argument("--ema_decay", type=float, default=None)
 parser.add_argument("--load", type=str, default=None)
+parser.add_argument("--clip_noise", action="store_true")
 args = parser.parse_args()
 
 # UNetを作成
@@ -25,6 +26,7 @@ diff = DiffusionModel(
     model,
     timesteps=1000,
     gpu=args.gpu,
+    clip_noise=args.clip_noise,
     working_dir=args.working_dir,
 )
 

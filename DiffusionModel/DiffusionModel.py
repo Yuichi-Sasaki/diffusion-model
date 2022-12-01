@@ -22,7 +22,7 @@ from torchvision.transforms import (
 
 
 class DiffusionModel(object):
-    def __init__(self, model, timesteps, gpu="-1", working_dir="working/test"):
+    def __init__(self, model, timesteps, clip_noise=False, gpu="-1", working_dir="working/test"):
         self.model = model
         self.timesteps = timesteps
         self.working_dir = working_dir
@@ -30,7 +30,7 @@ class DiffusionModel(object):
         self.gpu_ids = [int(x) for x in gpu.split(",")] if gpu != "-1" else None
         self.n_gpus = len(self.gpu_ids) if gpu != "-1" else 0
         self.device = "cuda:{}".format(self.gpu_ids[0]) if self.n_gpus > 0 else "cpu"
-        self.do_clip_noise = False
+        self.clip_noise = clip_noise
         self.clip_grad = 1.0
 
         self.output_fig_size = (20, 20)
@@ -162,6 +162,9 @@ class DiffusionModel(object):
                         ## 読み込まれた画像をx0と置く
                         x0 = data[itemIdx]
 
+                        if self.clip_noise:
+                            x0 = np.clip(x0, -1.0, +1.0)
+
                         ## 入力画像と同じサイズのノイズ(正規分布)も用意する。これがモデルで推定する量になるので、gtとサフィックスをつける。
                         noise_gt = np.random.randn(*(x0.shape))
 
@@ -177,6 +180,7 @@ class DiffusionModel(object):
 
                         ## 上記alphaなどの値を使って、学習画像(xt)を準備する
                         xt = x0 * coeff_x0 + noise_gt * coeff_noise
+
 
                         ###############
                         # 学習用のバッチに仕立てる
@@ -269,12 +273,13 @@ class DiffusionModel(object):
 
             img = coeff_normalize * (img - coeff_noise * noise_estimate)
 
+            if self.clip_noise:
+                img = np.clip(img, -1.0, +1.0)
+
             if t > 0:
                 additional_noise = np.random.randn(*(img.shape))
                 img += additional_noise * coeff_additional_noise
 
-            if self.do_clip_noise:
-                img = np.clip(img, -1.0, +1.0)
 
             imgs.append(img)
 
